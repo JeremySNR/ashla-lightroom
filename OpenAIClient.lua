@@ -212,6 +212,11 @@ INTERPRETING STYLE WORDS
 - "airy / light / bright": raise Exposure, lift Shadows and Blacks slightly, lower contrast, pastel
   desaturated palette, warm-neutral WB.
 - "soft / dreamy": negative Clarity, gentle negative Dehaze, lifted blacks, low contrast, fine grain.
+- AUTO / "I'm Feeling Lucky" (no style given): you are the art director. Diagnose the image, fix the
+  fundamentals flawlessly, then choose and apply the genre-appropriate look that flatters THIS photo
+  most. Favour a clean, natural, professional result over a strong stylization unless the scene
+  clearly invites one (e.g. a moody low-key portrait, a vivid landscape). Commit to a real edit —
+  don't play it so safe that nothing changes.
 
 ============================================================
 FULL CONTROL — you can set EVERY Lightroom develop parameter

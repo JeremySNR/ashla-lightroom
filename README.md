@@ -59,7 +59,8 @@ Full threading rationale: **`THREADING.md`**.
 2. Run **AI Style Edit…**:
    - **Library** → right-click photo → **AI Style Edit…**, or
    - **File → Plug-in Extras → AI Style Edit…**
-3. Enter a style description → **Generate Edit**.
+3. Either enter a style description → **Generate Edit**, **or** click **I'm Feeling Lucky** to let
+   the AI diagnose the photo and apply the best edit it can with no style brief.
 4. The model returns settings; the preset is applied and a summary dialog shows its rationale.
 
 ## Logs (on your Desktop)

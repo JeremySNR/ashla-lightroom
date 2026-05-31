@@ -27,6 +27,17 @@ local logger = require "Logger"
 
 local pipelineRunning = false
 
+-- "I'm Feeling Lucky": no user style. We hand the model a directive to diagnose the photo and
+-- produce the best professional edit it can, leaning on its own judgement instead of a style brief.
+local LUCKY_DIRECTIVE =
+	"AUTO / \"I'm Feeling Lucky\" mode — the user did NOT specify a style. Study the attached image "
+	.. "and every piece of metadata, diagnose what THIS specific photo needs, and produce the best "
+	.. "possible professional edit. Nail the fundamentals first (white balance, exposure, a full "
+	.. "tonal range, highlight/shadow recovery, believable skin and memory colors), then apply a "
+	.. "tasteful, genre-appropriate finish that makes this image look its best. Stay restrained and "
+	.. "natural — aim for a polished result a top editor would sign off on, not a heavy stylization. "
+	.. "Pick the look that best suits the subject, light, and mood you actually see."
+
 local function promptForStyle(context)
 	local props = LrBinding.makePropertyTable(context)
 	props.styleText = ""
@@ -49,14 +60,23 @@ local function promptForStyle(context)
 			title = 'e.g. "moody cinematic, lifted matte blacks, warm skin tones"',
 			text_color = import("LrColor")(0.5, 0.5, 0.5),
 		},
+		f:static_text {
+			title = "…or click \"I'm Feeling Lucky\" to let the AI pick the best edit for you.",
+			text_color = import("LrColor")(0.5, 0.5, 0.5),
+		},
 	}
 
 	local result = LrDialogs.presentModalDialog {
 		title = "AI Style Edit",
 		contents = contents,
 		actionVerb = "Generate Edit",
+		otherVerb = "I'm Feeling Lucky",
 	}
 
+	-- "other" = I'm Feeling Lucky: ignore any typed text and run fully autonomous.
+	if result == "other" then
+		return LUCKY_DIRECTIVE
+	end
 	if result == "ok" and props.styleText and props.styleText ~= "" then
 		return props.styleText
 	end
