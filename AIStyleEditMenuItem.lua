@@ -16,6 +16,7 @@ local LrFunctionContext = import "LrFunctionContext"
 local LrBinding = import "LrBinding"
 local LrView = import "LrView"
 local LrTasks = import "LrTasks"
+local LrPathUtils = import "LrPathUtils"
 
 local MetadataCollector = require "MetadataCollector"
 local ThumbnailExporter = require "ThumbnailExporter"
@@ -23,7 +24,31 @@ local OpenAIClient = require "OpenAIClient"
 local SettingsMapper = require "SettingsMapper"
 local PresetApplier = require "PresetApplier"
 local DebugLog = require "DebugLog"
+local Base64 = require "Base64"
 local logger = require "Logger"
+
+-- Read a reference image file and return { b64 = ..., mime = ... }, or nil + error. The reference
+-- is whatever the user picks (a sample shot of the look they want); we send it as-is so the model
+-- can match its grade. Cap the size so a huge file can't blow up the request.
+local MAX_REF_BYTES = 8 * 1024 * 1024
+local MIME_BY_EXT = {
+	jpg = "image/jpeg", jpeg = "image/jpeg", png = "image/png",
+	webp = "image/webp", gif = "image/gif",
+}
+
+local function readReferenceImage(path)
+	if not path or path == "" then return nil end
+	local f = io.open(path, "rb")
+	if not f then return nil, "could not open reference image" end
+	local data = f:read("*all")
+	f:close()
+	if not data or #data == 0 then return nil, "reference image was empty" end
+	if #data > MAX_REF_BYTES then
+		return nil, "reference image too large (" .. math.floor(#data / 1048576) .. " MB; max 8 MB)"
+	end
+	local ext = (LrPathUtils.extension(path) or ""):lower()
+	return { b64 = Base64.encode(data), mime = MIME_BY_EXT[ext] or "image/jpeg" }
+end
 
 local pipelineRunning = false
 
@@ -41,6 +66,8 @@ local LUCKY_DIRECTIVE =
 local function promptForStyle(context)
 	local props = LrBinding.makePropertyTable(context)
 	props.styleText = ""
+	props.refPath = nil
+	props.refLabel = "No reference image — optional"
 
 	local f = LrView.osFactory()
 	local contents = f:column {
@@ -60,6 +87,42 @@ local function promptForStyle(context)
 			title = 'e.g. "moody cinematic, lifted matte blacks, warm skin tones"',
 			text_color = import("LrColor")(0.5, 0.5, 0.5),
 		},
+		f:spacer { height = 6 },
+		f:static_text {
+			title = "Reference look (optional) — match the grade of an example image:",
+			font = "<system/bold>",
+		},
+		f:row {
+			spacing = f:label_spacing(),
+			f:push_button {
+				title = "Choose reference image…",
+				action = function()
+					local chosen = LrDialogs.runOpenPanel {
+						title = "Choose a reference image to match",
+						canChooseFiles = true,
+						canChooseDirectories = false,
+						allowsMultipleSelection = false,
+						fileTypes = { "jpg", "jpeg", "png", "webp", "gif" },
+					}
+					if chosen and chosen[1] then
+						props.refPath = chosen[1]
+						props.refLabel = LrPathUtils.leafName(chosen[1])
+					end
+				end,
+			},
+			f:push_button {
+				title = "Clear",
+				action = function()
+					props.refPath = nil
+					props.refLabel = "No reference image — optional"
+				end,
+			},
+			f:static_text {
+				title = LrView.bind("refLabel"),
+				width_in_chars = 28,
+				text_color = import("LrColor")(0.5, 0.5, 0.5),
+			},
+		},
 		f:static_text {
 			title = "…or click \"I'm Feeling Lucky\" to let the AI pick the best edit for you.",
 			text_color = import("LrColor")(0.5, 0.5, 0.5),
@@ -73,21 +136,25 @@ local function promptForStyle(context)
 		otherVerb = "I'm Feeling Lucky",
 	}
 
-	-- "other" = I'm Feeling Lucky: ignore any typed text and run fully autonomous.
+	-- "other" = I'm Feeling Lucky: ignore typed text, but still honor a reference if one was chosen.
 	if result == "other" then
-		return LUCKY_DIRECTIVE
+		return LUCKY_DIRECTIVE, props.refPath
 	end
-	if result == "ok" and props.styleText and props.styleText ~= "" then
-		return props.styleText
+	if result == "ok" and ((props.styleText and props.styleText ~= "") or props.refPath) then
+		-- A reference image alone is a valid request even without typed text.
+		local text = (props.styleText and props.styleText ~= "") and props.styleText
+			or "Match the attached reference look as closely as is tasteful for this photo."
+		return text, props.refPath
 	end
 	return nil
 end
 
-local function startPipeline(photo, styleText, brief, base64Jpeg)
+local function startPipeline(photo, styleText, brief, base64Jpeg, refPath)
 	pipelineRunning = true
 	logger:trace("=== NEW RUN === Style request: " .. styleText)
-	logger:trace("mode: build 16 | text+metadata+image | hasImage="
-		.. tostring(base64Jpeg ~= nil) .. " | steps: metadata -> openai -> apply")
+	logger:trace("mode: build 20 | text+metadata+image+reference | hasImage="
+		.. tostring(base64Jpeg ~= nil) .. " | hasRef=" .. tostring(refPath ~= nil)
+		.. " | steps: metadata -> openai -> apply")
 
 	LrFunctionContext.postAsyncTaskWithContext("aiStyleEditPipeline", function(context)
 		logger:trace("pipeline task; canYield=" .. tostring(LrTasks.canYield()))
@@ -95,8 +162,19 @@ local function startPipeline(photo, styleText, brief, base64Jpeg)
 		local ok, err = LrTasks.pcall(function()
 			MetadataCollector.enrichDevelopSettings(photo, brief)
 
+			local refImage
+			if refPath then
+				local ref, refErr = readReferenceImage(refPath)
+				if ref then
+					logger:trace("reference image loaded (" .. tostring(#ref.b64) .. " b64 chars, " .. ref.mime .. ")")
+					refImage = ref
+				else
+					logger:trace("reference image skipped: " .. tostring(refErr))
+				end
+			end
+
 			logger:trace("openai: requesting edit")
-			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, base64Jpeg)
+			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, base64Jpeg, refImage)
 			if not edit then
 				error(aiErr or "OpenAI request failed")
 			end
@@ -151,7 +229,7 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 		return
 	end
 
-	local styleText = promptForStyle(context)
+	local styleText, refPath = promptForStyle(context)
 	if not styleText then return end
 
 	logger:trace("collecting metadata on UI thread; canYield=" .. tostring(LrTasks.canYield()))
@@ -168,7 +246,7 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 	local function launch(b64)
 		if started then return end
 		started = true
-		startPipeline(photo, styleText, brief, b64)
+		startPipeline(photo, styleText, brief, b64, refPath)
 	end
 
 	logger:trace("requesting JPEG thumbnail on UI thread; canYield=" .. tostring(LrTasks.canYield()))

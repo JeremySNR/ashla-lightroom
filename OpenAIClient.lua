@@ -243,6 +243,27 @@ INTERPRETING STYLE WORDS
   most. Favour a clean, natural, professional result over a strong stylization unless the scene
   clearly invites one (e.g. a moody low-key portrait, a vivid landscape). Commit to a real edit —
   don't play it so safe that nothing changes.
+- NAMED PHOTOGRAPHER / "like <name>": if you genuinely know the photographer's signature look,
+  emulate its documented traits (palette, contrast, B&W vs color, mood, grain, typical grade). If you
+  are NOT confident who they are, do NOT invent a fabricated style — say so briefly in the rationale
+  and fall back to a tasteful edit that fits the photo and any style words given. A wrong guess is
+  worse than an honest, well-executed general edit.
+
+============================================================
+REFERENCE-IMAGE MATCHING (when a second "reference look" image is attached)
+============================================================
+When the user attaches a REFERENCE image alongside the photo to edit, your job is to MATCH ITS LOOK,
+not copy its content. This is exactly how a colorist matches a style:
+- Diagnose the reference like a grade you must reverse-engineer: overall white-balance feel
+  (warm/cool, any tint), where the black and white points sit (crushed vs lifted/matte), contrast
+  shape, the color palette and especially the COLOR GRADE — which hues live in the shadows, midtones
+  and highlights — global saturation/vibrance level, skin rendering, and grain/texture character.
+- Reproduce that look on the photo being edited using the right tools (WB, tone, curve, HSL, color
+  grade, grain). Match the STYLE, not the reference's exposure, subject or composition.
+- Still fix the edited photo's OWN fundamentals and adapt the look to its content and lighting —
+  if the reference is a bright beach scene and the target is a dim interior, match the grade's color
+  and contrast character without copying its brightness.
+- If the user also typed style words, treat them as refinements on top of the matched look.
 
 ============================================================
 FULL CONTROL — you can set EVERY Lightroom develop parameter
@@ -377,8 +398,9 @@ local function buildSchema()
 	}
 end
 
+-- refImage (optional): { b64 = "<base64>", mime = "image/jpeg" } — a reference of the target look.
 -- Returns parsed table (model JSON), errorMessage.
-function M.requestEdit(styleText, brief, base64Jpeg)
+function M.requestEdit(styleText, brief, base64Jpeg, refImage)
 	local apiKey = LrPasswords.retrieve(KEY_ACCOUNT)
 	if not apiKey or apiKey == "" then
 		return nil, "No OpenAI API key set. Add it in File > Plug-in Manager > AI Style Editor."
@@ -389,26 +411,50 @@ function M.requestEdit(styleText, brief, base64Jpeg)
 	local effort = prefs.reasoningEffort
 	if not effort or effort == "" then effort = "medium" end
 
-	-- Image export via LrExportSession is unreliable from menu tasks ("must not call on
-	-- main UI task"), so we work from the style description + rich metadata only.
 	local hasImage = type(base64Jpeg) == "string" and #base64Jpeg > 0
-	local imageNote = hasImage
-		and "\n\nAnalyze the attached image and return develop settings."
-		or "\n\nNo image is attached; infer a tasteful edit from the style request and metadata."
+	local hasRef = type(refImage) == "table" and type(refImage.b64) == "string" and #refImage.b64 > 0
+
+	local imageNote
+	if hasImage and hasRef then
+		imageNote = "\n\nTwo images are attached. IMAGE 1 is THE PHOTO TO EDIT. IMAGE 2 is a "
+			.. "REFERENCE of the look you should MATCH. Diagnose the reference's grade — white-balance "
+			.. "feel, tonal contrast and black/white points, color palette, color grade (which hues sit "
+			.. "in the shadows/mids/highlights), saturation level, and grain — then reproduce that LOOK "
+			.. "on image 1 using the appropriate sliders. Match the STYLE, not the reference's subject, "
+			.. "composition or exposure: still correct image 1's own fundamentals and adapt the look to "
+			.. "its content and lighting. Return develop settings for image 1."
+	elseif hasImage then
+		imageNote = "\n\nAnalyze the attached image (the photo to edit) and return develop settings."
+	elseif hasRef then
+		imageNote = "\n\nA REFERENCE image of the target look is attached (no photo-to-edit preview "
+			.. "available). Diagnose its grade and produce develop settings that reproduce that look, "
+			.. "guided by the style request and metadata."
+	else
+		imageNote = "\n\nNo image is attached; infer a tasteful edit from the style request and metadata."
+	end
 
 	local userText = "Style request: " .. styleText ..
 		"\n\nShot metadata (JSON):\n" .. json.encode(brief) ..
 		imageNote
 
 	local userContent
-	if hasImage then
-		userContent = {
-			{ type = "text", text = userText },
-			{
+	if hasImage or hasRef then
+		userContent = {}
+		userContent[#userContent + 1] = { type = "text", text = userText }
+		if hasImage then
+			userContent[#userContent + 1] = { type = "text", text = "IMAGE 1 — the photo to edit:" }
+			userContent[#userContent + 1] = {
 				type = "image_url",
 				image_url = { url = "data:image/jpeg;base64," .. base64Jpeg },
-			},
-		}
+			}
+		end
+		if hasRef then
+			userContent[#userContent + 1] = { type = "text", text = "IMAGE 2 — reference look to match:" }
+			userContent[#userContent + 1] = {
+				type = "image_url",
+				image_url = { url = "data:" .. (refImage.mime or "image/jpeg") .. ";base64," .. refImage.b64 },
+			}
+		end
 	else
 		userContent = userText
 	end
