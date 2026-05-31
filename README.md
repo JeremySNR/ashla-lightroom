@@ -9,7 +9,7 @@
 ![Lightroom Classic](https://img.shields.io/badge/Lightroom-Classic-31A8FF?style=for-the-badge)
 ![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=for-the-badge)
 ![Vision](https://img.shields.io/badge/vision-enabled-3FB950?style=for-the-badge)
-![Version](https://img.shields.io/badge/v0.1.0-build_23-FFD166?style=for-the-badge)
+![Version](https://img.shields.io/badge/v0.1.0-build_30-FFD166?style=for-the-badge)
 
 </div>
 
@@ -54,6 +54,8 @@ The whole idea in one sentence: good editors tend to under edit. The best grade 
 ## Cropping (optional, off by default)
 
 Turn on one checkbox and Ashla can also recompose the frame. It can level a tilted horizon, trim dead space at the edges, tighten in on the subject, or nudge things toward a stronger composition. It only crops when doing so genuinely helps, it never cuts through faces or important content, and it leaves your framing alone the rest of the time. Every crop is validated before it reaches the catalog, so a bad one cannot mangle your photo.
+
+There is one exception to the checkbox. If you ask for a cinematic look or a specific film or camera format, Ashla reframes to that format's aspect ratio whether or not the checkbox is on, because the aspect ratio is part of what you asked for. A cinematic request becomes a 2.39:1 widescreen frame, a Pentax 67 becomes 7:6, an Xpan becomes a wide panorama, square becomes 1:1, and so on. It works out the crop from your photo's real dimensions and keeps the strongest composition.
 
 ## How it runs
 

@@ -137,6 +137,10 @@ local function promptForStyle(context)
 			title = "Off by default — keeps your original framing. When on, the AI only crops when it helps.",
 			text_color = import("LrColor")(0.5, 0.5, 0.5),
 		},
+		f:static_text {
+			title = "Asking for a cinematic look or a specific film format (e.g. Xpan, 6x7, square) reframes to that aspect ratio either way.",
+			text_color = import("LrColor")(0.5, 0.5, 0.5),
+		},
 	}
 
 	local result = LrDialogs.presentModalDialog {
@@ -162,7 +166,7 @@ end
 local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allowCrop)
 	pipelineRunning = true
 	logger:trace("=== NEW RUN === Style request: " .. styleText)
-	logger:trace("mode: build 21 | text+metadata+image+reference | hasImage="
+	logger:trace("mode: build 30 | text+metadata+image+reference | hasImage="
 		.. tostring(base64Jpeg ~= nil) .. " | hasRef=" .. tostring(refPath ~= nil)
 		.. " | allowCrop=" .. tostring(allowCrop == true)
 		.. " | steps: metadata -> openai -> apply")
@@ -172,6 +176,22 @@ local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allow
 
 		local ok, err = LrTasks.pcall(function()
 			MetadataCollector.enrichDevelopSettings(photo, brief)
+
+			-- If the UI-thread thumbnail never arrived (requestJpegThumbnail returns "error loading
+			-- thumb" on a cache miss and sometimes never re-fires), fall back to an export-based
+			-- capture here. This runs on the background pipeline task (canYield=true), the one place
+			-- LrExportSession is legal — it fails only on the main UI task. Without this, a missing
+			-- preview makes the model edit blind (hasImage=false) and cropping becomes pure guesswork.
+			if not base64Jpeg then
+				logger:trace("no UI-thread thumbnail; trying export fallback on background task")
+				local b64, exErr = ThumbnailExporter.toBase64Jpeg(photo, 1024)
+				if b64 then
+					base64Jpeg = b64
+					logger:trace("export fallback produced image (" .. tostring(#b64) .. " b64 chars)")
+				else
+					logger:trace("export fallback failed: " .. tostring(exErr) .. " — proceeding text-only")
+				end
+			end
 
 			local refImage
 			if refPath then
@@ -191,7 +211,7 @@ local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allow
 			end
 			logger:trace("openai: ok")
 
-			local settings = SettingsMapper.toDevelopSettings(edit, brief, allowCrop)
+			local settings = SettingsMapper.toDevelopSettings(edit, brief)
 
 			DebugLog.writeRun {
 				styleText = styleText,
@@ -260,27 +280,37 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 		startPipeline(photo, styleText, brief, b64, refPath, allowCrop)
 	end
 
+	-- requestJpegThumbnail often calls back with "error loading thumb" on a cache miss (the preview
+	-- isn't rendered yet), then again with real data once Lightroom finishes building it. We retry on
+	-- the UI thread (the callback fires there, so a fresh request is valid) to nudge that render, and a
+	-- generous fallback waits for it rather than editing blind. Editing without the image AND without
+	-- dimensions is what made cropping impossible, so it's worth waiting a few extra seconds.
 	logger:trace("requesting JPEG thumbnail on UI thread; canYield=" .. tostring(LrTasks.canYield()))
-	local reqOk = pcall(function()
+	local MAX_THUMB_ATTEMPTS = 5
+	local function requestThumb(attempt)
 		ThumbnailExporter.requestBase64Jpeg(photo, 1024, function(b64, err)
 			if b64 and not err then
-				logger:trace("thumbnail ready (" .. tostring(#b64) .. " b64 chars)")
+				logger:trace("thumbnail ready (" .. tostring(#b64) .. " b64 chars) on attempt " .. attempt)
 				launch(b64)
 			else
-				logger:trace("thumbnail attempt empty/error: " .. tostring(err))
+				logger:trace("thumbnail attempt " .. attempt .. " empty/error: " .. tostring(err))
+				if not started and attempt < MAX_THUMB_ATTEMPTS then
+					requestThumb(attempt + 1)
+				end
 			end
 		end)
-	end)
+	end
+	local reqOk = pcall(function() requestThumb(1) end)
 
 	-- Fallback so a missing/failed thumbnail can't stall the run. If a real image arrives first,
-	-- the guard makes this a no-op; otherwise we proceed text-only after a short wait.
+	-- the guard makes this a no-op; otherwise we proceed text-only after waiting for the render.
 	LrTasks.startAsyncTask(function()
 		if not reqOk then
 			logger:trace("requestJpegThumbnail threw; proceeding text-only")
 			launch(nil)
 			return
 		end
-		LrTasks.sleep(6)
+		LrTasks.sleep(15)
 		if not started then
 			logger:trace("no thumbnail within timeout; proceeding text-only")
 			launch(nil)

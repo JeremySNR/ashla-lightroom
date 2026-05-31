@@ -127,12 +127,17 @@ local function applyCrop(s, crop)
 	if type(crop) ~= "table" then return end
 	local top, left = crop.top, crop.left
 	local bottom, right = crop.bottom, crop.right
-	if type(top) ~= "number" or type(left) ~= "number"
-		or type(bottom) ~= "number" or type(right) ~= "number" then
+	-- Need at least one real edge, otherwise there's nothing to crop.
+	if type(top) ~= "number" and type(left) ~= "number"
+		and type(bottom) ~= "number" and type(right) ~= "number" then
 		return
 	end
-	top = clamp(top, 0, 1); left = clamp(left, 0, 1)
-	bottom = clamp(bottom, 0, 1); right = clamp(right, 0, 1)
+	-- Default any unspecified edge to the full frame so a single-axis crop still works (e.g. a
+	-- letterbox band that only gives top/bottom, leaving the full width).
+	top = clamp(type(top) == "number" and top or 0, 0, 1)
+	left = clamp(type(left) == "number" and left or 0, 0, 1)
+	bottom = clamp(type(bottom) == "number" and bottom or 1, 0, 1)
+	right = clamp(type(right) == "number" and right or 1, 0, 1)
 	if (right - left) < MIN_CROP_FRACTION or (bottom - top) < MIN_CROP_FRACTION then
 		return
 	end
@@ -147,10 +152,58 @@ local function applyCrop(s, crop)
 	s.CropConstrainToWarp = false
 end
 
+-- The model is told to return crops in the dedicated `crop` object, but it sometimes expresses them
+-- as advanced CropTop/Left/Bottom/Right/CropAngle keys instead. Accept either so a valid crop is not
+-- silently dropped — the advanced passthrough can't apply Crop* keys (they need validation + HasCrop).
+local function cropFromEdit(edit)
+	if type(edit.crop) == "table" then return edit.crop end
+	local adv = edit.advanced
+	if type(adv) == "table" and (type(adv.CropTop) == "number" or type(adv.CropLeft) == "number"
+		or type(adv.CropBottom) == "number" or type(adv.CropRight) == "number") then
+		return {
+			top = adv.CropTop, left = adv.CropLeft,
+			bottom = adv.CropBottom, right = adv.CropRight,
+			angle = adv.CropAngle,
+		}
+	end
+	return nil
+end
+
+-- The model sees the DISPLAY-oriented preview and returns crop fractions in that space, but Lightroom
+-- stores CropTop/Left/Bottom/Right relative to the photo's UNROTATED (sensor) orientation. For a rotated
+-- or mirrored photo those axes differ, so a wide display band can land as a tall sliver. This maps the
+-- model's display-space rect into Lightroom's stored space using the EXIF orientation 2-letter code.
+-- Identity for "AB" (normal), so unrotated photos are unaffected. Each branch returns left,top,right,bottom.
+local ORIENT_XFORM = {
+	-- code = function(l, t, r, b) -> l2, t2, r2, b2  (all 0..1, ordered)
+	AB = function(l, t, r, b) return l, t, r, b end,                 -- 1 normal
+	BA = function(l, t, r, b) return 1 - r, t, 1 - l, b end,         -- 2 mirror horizontal
+	CD = function(l, t, r, b) return 1 - r, 1 - b, 1 - l, 1 - t end, -- 3 rotate 180
+	DC = function(l, t, r, b) return l, 1 - b, r, 1 - t end,         -- 4 mirror vertical
+	AD = function(l, t, r, b) return t, l, b, r end,                 -- 5 transpose
+	BC = function(l, t, r, b) return t, 1 - r, b, 1 - l end,         -- 6 rotate 90 CW
+	CB = function(l, t, r, b) return 1 - b, 1 - r, 1 - t, 1 - l end, -- 7 transverse
+	DA = function(l, t, r, b) return 1 - b, l, 1 - t, r end,         -- 8 rotate 90 CCW
+}
+
+local function orientCrop(crop, orientation)
+	if type(crop) ~= "table" then return crop end
+	local xform = orientation and ORIENT_XFORM[orientation]
+	if not xform then return crop end
+	-- Fill missing edges with the full frame so we can rotate a complete rectangle.
+	local l = type(crop.left) == "number" and crop.left or 0
+	local t = type(crop.top) == "number" and crop.top or 0
+	local r = type(crop.right) == "number" and crop.right or 1
+	local b = type(crop.bottom) == "number" and crop.bottom or 1
+	local l2, t2, r2, b2 = xform(l, t, r, b)
+	return { left = l2, top = t2, right = r2, bottom = b2, angle = crop.angle }
+end
+
 -- edit: parsed model JSON. brief: metadata (used to decide temp handling).
--- allowCrop: when true, an edit.crop rectangle (if valid) is applied; otherwise ignored.
+-- Any valid edit.crop rectangle is applied. Gating lives in the prompt: the model only returns a
+-- crop when discretionary cropping is enabled OR the style explicitly requests a format/aspect ratio.
 -- Returns a settings table suitable for addDevelopPresetForPlugin.
-function M.toDevelopSettings(edit, brief, allowCrop)
+function M.toDevelopSettings(edit, brief)
 	local s = { ProcessVersion = "11.0" }
 
 	for modelKey, spec in pairs(MAP) do
@@ -215,9 +268,7 @@ function M.toDevelopSettings(edit, brief, allowCrop)
 		end
 	end
 
-	if allowCrop then
-		applyCrop(s, edit.crop)
-	end
+	applyCrop(s, orientCrop(cropFromEdit(edit), brief and brief.exifOrientation))
 
 	return s
 end

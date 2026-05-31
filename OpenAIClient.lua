@@ -296,7 +296,8 @@ not copy its content. This is exactly how a colorist matches a style:
 FULL CONTROL — you can set EVERY Lightroom develop parameter
 ============================================================
 Use the friendly fields for common moves, AND an "advanced" object to set any other develop key by
-its EXACT Lightroom name mapped to a number. Available advanced keys include:
+its EXACT Lightroom name mapped to a number. (Cropping is the exception — it has its own `crop` object;
+Crop* keys placed in `advanced` are ignored.) Available advanced keys include:
 - Parametric curve: ParametricShadows, ParametricDarks, ParametricLights, ParametricHighlights,
   ParametricShadowSplit, ParametricMidtoneSplit, ParametricHighlightSplit.
 - Sharpening: Sharpness, SharpenRadius, SharpenDetail, SharpenEdgeMasking.
@@ -330,23 +331,63 @@ WHITE BALANCE (relative, never absolute)
   green fluorescent cast (toward magenta) or a magenta cast (toward green).
 
 ============================================================
-CROPPING (only when explicitly enabled for the run)
+CROPPING & ASPECT-RATIO FRAMING
 ============================================================
-By default you do NOT crop — leave `crop` absent/null and the original framing is kept. When the
-user message says cropping is ENABLED, you MAY return a `crop` object, but ONLY if a crop clearly
-improves the photograph. A good edit usually keeps the original frame; cropping discards pixels and
-the user notices it, so treat it as a deliberate compositional decision, not a default.
-- Coordinates are FRACTIONS of the image, 0..1, measured from the top-left: { top, left, bottom,
-  right }. left<right and top<bottom. The full frame is top=0,left=0,bottom=1,right=1. Example: to
-  trim 5% off the top and 10% off the bottom, top=0.05, bottom=0.90, left=0, right=1.
-- `angle` (degrees, -45..45) straightens a tilted horizon or verticals. Keep it small (a few degrees);
-  use 0 if level. A rotated crop loses edge pixels, so don't over-rotate.
-- Crop FOR a reason you can see: level a horizon, remove dead/distracting edge space, tighten to the
-  subject, fix an off-balance composition, or move the subject toward a stronger third. Respect the
-  subject — never cut through faces/hands or amputate important content.
-- Be conservative: small trims beat aggressive reframes. Don't change the aspect ratio drastically
-  unless the composition truly calls for it. If in doubt, don't crop.
-- State the crop reason in your rationale when you return one.
+There are TWO separate reasons you may return a `crop` object. If neither applies, leave `crop`
+absent/null and keep the original framing.
+
+(1) DISCRETIONARY COMPOSITIONAL CROP — only when the user message says cropping is ENABLED. Then you
+MAY crop if it clearly improves the photograph, but a good edit usually keeps the original frame;
+cropping discards pixels and the user notices it, so treat it as a deliberate decision, not a default.
+
+(2) ASPECT-RATIO / FORMAT FRAMING — allowed REGARDLESS of the discretionary setting, but ONLY when
+the style request EXPLICITLY calls for a cinematic look or a specific film/camera format that carries
+its own aspect ratio. Asking for "a cinema shot" or "shot on a Pentax 67" is itself an instruction to
+reframe to that format's ratio. Do NOT change the aspect ratio for any other reason, and never invent
+a format the user did not ask for. If the request names no format and discretionary cropping is off,
+do not touch the frame.
+
+Common requests and their target aspect ratios (width:height of the FINISHED frame):
+- "cinematic" / "cinema" / "film still" / "movie still" / "anamorphic" / "scope": 2.39:1 widescreen.
+- "16:9" / "widescreen" / "video": 16:9.
+- "academy" / "theatrical": 1.85:1.
+- "square" / "6x6" / "Hasselblad" / "medium-format square" / "Instagram square": 1:1.
+- "6x7" / "67" / "Pentax 67" / "Mamiya 7": 7:6 (~1.17:1).
+- "645": 4:3.
+- "4x5" / "large format" / "5x4": 5:4.
+- "Xpan" / "panoramic" / "panorama": 65:24 (~2.71:1).
+- "35mm" / "full frame" / "3:2": 3:2 — this is the native still ratio, so usually NO crop is needed.
+A named film STOCK alone (e.g. "Portra 400") is a color/grain look, NOT an aspect-ratio request — do
+not crop for it unless the user also asks for a format or cinematic frame.
+
+HOW TO COMPUTE THE RECTANGLE for a target ratio R = (target width)/(target height):
+- The metadata gives the source pixel size as brief.width (W) and brief.height (H). If those are
+  absent, read the frame's current aspect ratio directly from the attached photo. By DEFAULT keep the
+  photo's existing orientation: if it is landscape, frame R as a wide rectangle; if portrait, use the
+  reciprocal so the long side stays long (a "cinematic" portrait becomes a tall 1:2.39, not a letterbox
+  that guts the subject). BUT if the user EXPLICITLY asks for a different orientation (e.g. "make it
+  landscape", "a wide cinematic strip from this vertical", "go horizontal"), honor it: crop R in the
+  requested orientation even if that means taking a tight band out of the frame. Position that band
+  over the strongest composition and keep the key subject inside it (for a vertical source going wide,
+  this is usually a horizontal slice through the subject and its reflection / the waterline). Warn in
+  the rationale if the requested orientation forces a very aggressive crop.
+- Fit the LARGEST rectangle of ratio R that fits inside WxH, then position it over the strongest
+  composition (keep the subject, move it toward a third, level the horizon). To maximize area:
+  if W/H > R the height is the limit (crop the sides); otherwise the width is the limit (crop top/bottom).
+- Express the result as FRACTIONS 0..1 from the top-left: { top, left, bottom, right }, left<right and
+  top<bottom. Full frame is top=0,left=0,bottom=1,right=1. Example, a 2.39:1 letterbox on a 3:2
+  landscape: keep full width (left=0,right=1) and trim top+bottom symmetrically around the subject
+  (e.g. top≈0.16, bottom≈0.84). Center on the subject rather than the geometric middle when they differ.
+
+GENERAL CROP RULES (both kinds):
+- Return the crop ONLY in the dedicated top-level `crop` object ({ top, left, bottom, right, angle }).
+  Do NOT put CropTop/CropLeft/CropBottom/CropRight/CropAngle in `advanced` — crop keys there are
+  ignored, and your crop will be lost.
+- `angle` (degrees, -45..45) straightens a tilted horizon or verticals. Keep it small; use 0 if level.
+- Respect the subject — never cut through faces/hands or amputate important content. If a target ratio
+  cannot be reached without destroying the subject, get as close as you tastefully can and say so.
+- Be conservative: small, well-placed trims beat aggressive reframes.
+- Always state the crop reason (and the target aspect ratio, if any) in your rationale.
 
 RESTRAINT & SELF-CHECK (the difference between pro and filter)
 ============================================================
@@ -491,13 +532,19 @@ function M.requestEdit(styleText, brief, base64Jpeg, refImage, allowCrop)
 
 	local cropNote
 	if allowCrop then
-		cropNote = "\n\nCROPPING IS ENABLED for this run: you MAY return a `crop` object if a crop "
-			.. "clearly improves the composition (level a horizon, remove dead edge space, tighten to the "
-			.. "subject, strengthen the framing). Keep it conservative and omit `crop` if the original "
-			.. "frame is already good."
+		cropNote = "\n\nDISCRETIONARY CROPPING IS ENABLED for this run: you MAY return a `crop` object if "
+			.. "a crop clearly improves the composition (level a horizon, remove dead edge space, tighten "
+			.. "to the subject, strengthen the framing). Keep it conservative and omit `crop` if the "
+			.. "original frame is already good. You may ALSO reframe to an aspect ratio if the style "
+			.. "explicitly requests a cinematic look or a specific film/camera format (see CROPPING & "
+			.. "ASPECT-RATIO FRAMING)."
 	else
-		cropNote = "\n\nCropping is DISABLED for this run: do NOT return a `crop` object; keep the "
-			.. "original framing."
+		cropNote = "\n\nDiscretionary cropping is DISABLED for this run: do NOT crop merely to improve "
+			.. "the composition. HOWEVER, if the style request EXPLICITLY calls for a cinematic look or a "
+			.. "specific film/camera format that has its own aspect ratio (e.g. cinematic 2.39:1, square, "
+			.. "Pentax 67, Xpan panoramic), you SHOULD return a `crop` that reframes to that ratio — that "
+			.. "is an explicit instruction, not discretionary cropping. Otherwise keep the original framing "
+			.. "and leave `crop` null."
 	end
 
 	local userText = "Style request: " .. styleText ..
