@@ -1,0 +1,18 @@
+# Local Claude Code config (machine-specific permissions, not for publishing)
+.claude/
+
+# Runtime artifacts the plugin writes (logs + last-run dump may contain photo paths/metadata)
+*.log
+ai-style-editor.log
+ai-style-editor-last.json
+
+# Secrets — never commit. The API key lives in the OS keychain via LrPasswords.
+.env
+*.key
+*.pem
+secrets.*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
