@@ -17,10 +17,16 @@ local function fileLog(msg)
 	end)
 end
 
-local origTrace = logger.trace
-logger.trace = function(self, msg)
-	origTrace(self, msg)
-	fileLog(msg)
+-- Wrap trace to also append to the Desktop log — but only once. If the module is
+-- re-evaluated (e.g. on plugin reload) against the same logger object, re-wrapping would
+-- stack fileLog and write every line twice. The guard keeps it idempotent.
+if not logger._fileLogWrapped then
+	local origTrace = logger.trace
+	logger.trace = function(self, msg)
+		origTrace(self, msg)
+		fileLog(msg)
+	end
+	logger._fileLogWrapped = true
 end
 
 logger.fileLog = function(self, msg) fileLog(msg) end

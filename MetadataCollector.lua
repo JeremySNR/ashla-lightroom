@@ -100,8 +100,10 @@ function M.enrichDevelopSettings(photo, brief)
 		return
 	end
 
+	-- getDevelopSettings yields, so it must run under LrTasks.pcall — a plain pcall fails with
+	-- "Yielding is not allowed within a C or metamethod call" and currentSettings stays empty.
 	local settings = {}
-	local ok, dev = pcall(function() return photo:getDevelopSettings() end)
+	local ok, dev = LrTasks.pcall(function() return photo:getDevelopSettings() end)
 	if ok and dev then
 		for _, k in ipairs(SETTING_KEYS) do
 			if dev[k] ~= nil then settings[k] = dev[k] end
