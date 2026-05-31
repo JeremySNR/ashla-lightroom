@@ -126,11 +126,37 @@ CREATIVE COLOR — CURVES & GRADING:
     the blue channel's shadow end and drop its highlight end => teal shadows + warm highlights
     (cinematic "teal & orange"). Lift red in highlights for warm skin glow; add blue to shadows for
     cool, moody darks. This is the heart of a cinematic/film grade.
-- colorGrade: shadow / midtone / highlight / global wheels, each {h:0-360, s:0-100, l:-100..100},
-  plus blending (how softly the three regions overlap — higher = smoother transitions) and balance
-  (shifts the midpoint toward shadows or highlights). Classic cinematic split: warm highlights
-  (h~35-50, s~10-25) + cool/teal shadows (h~200-235, s~10-25), low saturation, blending ~50.
-  Keep saturation tasteful (single digits to ~25) — heavy grading looks like a cheap filter.
+- colorGrade — the most powerful and the most easily-overdone color tool. UNDERSTAND WHAT IT IS:
+  unlike HSL (which only edits colors ALREADY in the image and cannot add any), color grading ADDS
+  color INTO tonal ranges. Use the grade to tint neutral/gray areas (a flat sky, gray shadows,
+  blank highlights) that HSL can't touch; use HSL to steer colors that already exist (skin, foliage,
+  sky). The grade sits ON TOP of the edit and is not affected by HSL, so they layer — set your
+  foundation with WB + HSL first, then add mood with the grade.
+  * Regions: shadow / midtone / highlight / global, each { h:0-360, s:0-100, l:-100..100 }. Global
+    washes the WHOLE image in one hue — reach for it when Temp/Tint alone can't sell a mood, or to
+    lean hard into a single color family.
+  * blending (0-100): how softly the regions blend — higher = smoother gradient between them, lower
+    = more abrupt separation. balance (-100..100): shifts which regions dominate (+ favors
+    highlights, - favors shadows). Both are photo-specific; pick them to taste.
+  * Luminance interaction: you cannot tint pure black or pure white. To get shadow color to read,
+    the shadows must not be fully crushed (a lifted black point / raised Blacks / the region's
+    luminance bar opens them up); to get highlight color, the highlights must be pulled below clip.
+    Tonal moves and the grade interact — judge color against the actual tones in the image.
+  COLOR-COMBINATION PLAYBOOK (lean on color theory, stay subtle):
+  * COMPLEMENTARY (opposite on the wheel) — the workhorse. Blue+orange is natural and pleasing:
+    cool/blue shadows (h~210-235) + warm highlights (h~35-50) + often warm midtones. Subtle by day;
+    push it harder at NIGHT, where deep shadows give you room for rich blue + warm highlights.
+    Green+red gives a Fuji-film aesthetic: gentle green shadows (h~90-150) + soft pink/magenta
+    highlights (h~330-350). Purple+green suits abstract night scenes.
+  * ANALOGOUS / MONOCHROMATIC — go all-in on one family for a strong mood: warm autumn tones (global
+    or matching warmth across regions), or a moody blue (blue in midtones+highlights, leaving
+    shadows neutral so the darks read as a built-in complement). Cohesive and evocative.
+  * Classic cinematic default when a look is requested but unspecified: warm highlights (h~40, s~12-20)
+    + cool shadows (h~215, s~12-20), blending ~50, balance slightly warm.
+  RESTRAINT: subtle changes change the whole mood — you do NOT need strong color. Keep region
+  saturation modest (usually single digits to ~25); heavy saturation reads as a cheap filter and
+  turns skin/whites "funky". Only grade when it genuinely serves the photo's mood; a clean, accurate
+  image often wants little or none. When unsure, err toward the natural blue/orange complement.
 
 DETAIL (size to ISO and subject):
 - Sharpening: Amount (Sharpness), Radius (~0.8-1.0 for portraits/fine detail, up to ~1.5+ for
