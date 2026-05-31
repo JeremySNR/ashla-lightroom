@@ -200,18 +200,45 @@ GENRE PLAYBOOKS (the standard each genre is judged against)
 ============================================================
 FILM EMULATION — actually emulate the stock, don't fake it with basics
 ============================================================
-A convincing film edit almost ALWAYS combines tone curve + HSL + color grade/calibration + grain,
-not just Basic sliders. Match the documented character of the stock:
+Film is a RESPONSE TO LIGHT, not a color tint. A convincing emulation reconstructs three things
+TOGETHER — the film's tonal curve, its per-channel color response, and its grain — never a global
+cast laid over a digital-looking tone. It almost ALWAYS combines tone curve + HSL +
+color grade/calibration + grain, not just Basic sliders.
+
+THE CHARACTERISTIC CURVE (the single highest-leverage film move):
+- TOE: film has no true black — the film base keeps the darkest tones slightly grey. Lift the tone
+  curve's bottom-left point ~5-10% (input 0 -> output ~13-26 on the 0-255 scale). This is the matte floor.
+- SHOULDER: film compresses highlights gradually instead of clipping hard. Pull the top-right point
+  DOWN and slightly LEFT (e.g. 255 -> ~242-248) so whites roll off softly and keep texture. Let the
+  brightest tones lean a touch WARM as they roll off — film highlights are rarely neutral white.
+- Combined film-density curve example: [[0,18],[48,46],[128,128],[205,214],[255,244]] — lifted toe,
+  gentle S, compressed warm shoulder. Tune the depth to the stock: Portra / Pro 400H are shallow and
+  soft; Ektar / Velvia are steeper with a firmer shoulder.
+
+GRAIN lives in the MIDTONES and is STRUCTURE, not random dots. Fine/tight grain (size ~15-25) suits
+low-ISO and portrait stocks (Portra); coarse/rough grain (size ~30-45) suits pushed, tungsten or B&W
+stocks (Tri-X, HP5, CineStill). Grain FINISHES a film look, it does not create one — keep it honest.
+
+HALATION — the red-orange glow where bright highlights bleed into surrounding shadow (street lights,
+windows, rim light); the signature of CineStill 800T and tungsten stocks. True halation needs a LOCAL
+mask, which is out of scope here, so APPROXIMATE it globally and subtly: warm the HIGHLIGHT
+color-grade region toward orange/red (h~15-30, low sat) and/or lift the red channel's highlight end,
+with a soft highlight roll-off for bloom. Reserve it for night / neon / tungsten looks; skip it in
+clean daylight.
+
+Match the documented character of the stock:
 - Kodak Portra 400: soft, warm, LOW contrast, gorgeous skin (orange luminance up a touch, gentle
-  saturation), pastel palette, gently lifted blacks, soft highlight roll-off, blues muted toward
-  cyan, fine grain (~15-25). The wedding/editorial standard.
+  saturation), pastel palette, gently lifted blacks, soft highlight roll-off, greens leaning OLIVE,
+  blues rolling toward MUTED TEAL, fine grain (~15-25). The wedding/editorial standard.
 - Kodak Gold 200: warm golden cast, YELLOW-leaning highlights, slightly green-yellow midtones,
   lifted (not crushed) blacks via a faded S-curve, warm slightly-desaturated skin, muted warm
   greens, restrained blues, modest grain (~20-30). Nostalgic, punchy midtones with soft shadows.
 - Kodak Ektar 100: vivid, SATURATED, contrasty, very fine grain, cool-leaning, punchy reds and
-  blues — a landscape/travel stock. Higher Vibrance, S-curve, clean detail.
+  blues — a landscape/travel stock. Reds push toward saturated ORANGE; steeper midtone curve with a
+  firmer highlight shoulder. Higher Vibrance, S-curve, clean detail.
 - Fuji Pro 400H: cool, GREEN-leaning, soft, pastel and airy (the "light & airy" look), minty
-  greens, gentle muted blues, lifted shadows, fine grain. Bright, low-contrast.
+  greens shifting toward TEAL, highlights leaning YELLOW-GREEN, skin rendered cooler/editorial,
+  gentle muted blues, lifted shadows, fine grain. Bright, low-contrast.
 - Fuji Velvia 50: EXTREME saturation and contrast, electric greens and reds — dramatic landscapes.
 - CineStill 800T: TUNGSTEN-balanced, so cool/teal in daylight; signature red HALATION glow around
   highlights (emulate with a warm/red color grade in the highlights + a soft highlight lift),

@@ -9,7 +9,7 @@
 ![Lightroom Classic](https://img.shields.io/badge/Lightroom-Classic-31A8FF?style=for-the-badge)
 ![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=for-the-badge)
 ![Vision](https://img.shields.io/badge/vision-enabled-3FB950?style=for-the-badge)
-![Version](https://img.shields.io/badge/v0.1.0-build_22-FFD166?style=for-the-badge)
+![Version](https://img.shields.io/badge/v0.1.0-build_23-FFD166?style=for-the-badge)
 
 </div>
 
