@@ -68,6 +68,7 @@ local function promptForStyle(context)
 	props.styleText = ""
 	props.refPath = nil
 	props.refLabel = "No reference image — optional"
+	props.allowCrop = false
 
 	local f = LrView.osFactory()
 	local contents = f:column {
@@ -127,6 +128,15 @@ local function promptForStyle(context)
 			title = "…or click \"I'm Feeling Lucky\" to let the AI pick the best edit for you.",
 			text_color = import("LrColor")(0.5, 0.5, 0.5),
 		},
+		f:spacer { height = 6 },
+		f:checkbox {
+			title = "Let the AI crop the photo if it improves the composition",
+			value = LrView.bind("allowCrop"),
+		},
+		f:static_text {
+			title = "Off by default — keeps your original framing. When on, the AI only crops when it helps.",
+			text_color = import("LrColor")(0.5, 0.5, 0.5),
+		},
 	}
 
 	local result = LrDialogs.presentModalDialog {
@@ -138,22 +148,23 @@ local function promptForStyle(context)
 
 	-- "other" = I'm Feeling Lucky: ignore typed text, but still honor a reference if one was chosen.
 	if result == "other" then
-		return LUCKY_DIRECTIVE, props.refPath
+		return LUCKY_DIRECTIVE, props.refPath, props.allowCrop
 	end
 	if result == "ok" and ((props.styleText and props.styleText ~= "") or props.refPath) then
 		-- A reference image alone is a valid request even without typed text.
 		local text = (props.styleText and props.styleText ~= "") and props.styleText
 			or "Match the attached reference look as closely as is tasteful for this photo."
-		return text, props.refPath
+		return text, props.refPath, props.allowCrop
 	end
 	return nil
 end
 
-local function startPipeline(photo, styleText, brief, base64Jpeg, refPath)
+local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allowCrop)
 	pipelineRunning = true
 	logger:trace("=== NEW RUN === Style request: " .. styleText)
-	logger:trace("mode: build 20 | text+metadata+image+reference | hasImage="
+	logger:trace("mode: build 21 | text+metadata+image+reference | hasImage="
 		.. tostring(base64Jpeg ~= nil) .. " | hasRef=" .. tostring(refPath ~= nil)
+		.. " | allowCrop=" .. tostring(allowCrop == true)
 		.. " | steps: metadata -> openai -> apply")
 
 	LrFunctionContext.postAsyncTaskWithContext("aiStyleEditPipeline", function(context)
@@ -174,13 +185,13 @@ local function startPipeline(photo, styleText, brief, base64Jpeg, refPath)
 			end
 
 			logger:trace("openai: requesting edit")
-			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, base64Jpeg, refImage)
+			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, base64Jpeg, refImage, allowCrop)
 			if not edit then
 				error(aiErr or "OpenAI request failed")
 			end
 			logger:trace("openai: ok")
 
-			local settings = SettingsMapper.toDevelopSettings(edit, brief)
+			local settings = SettingsMapper.toDevelopSettings(edit, brief, allowCrop)
 
 			DebugLog.writeRun {
 				styleText = styleText,
@@ -229,7 +240,7 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 		return
 	end
 
-	local styleText, refPath = promptForStyle(context)
+	local styleText, refPath, allowCrop = promptForStyle(context)
 	if not styleText then return end
 
 	logger:trace("collecting metadata on UI thread; canYield=" .. tostring(LrTasks.canYield()))
@@ -246,7 +257,7 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 	local function launch(b64)
 		if started then return end
 		started = true
-		startPipeline(photo, styleText, brief, b64, refPath)
+		startPipeline(photo, styleText, brief, b64, refPath, allowCrop)
 	end
 
 	logger:trace("requesting JPEG thumbnail on UI thread; canYield=" .. tostring(LrTasks.canYield()))

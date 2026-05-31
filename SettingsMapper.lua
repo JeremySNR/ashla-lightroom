@@ -119,9 +119,38 @@ local function flattenCurve(points)
 	return #flat >= 4 and flat or nil
 end
 
+-- Applies a crop to settings if the model returned a valid rectangle. Coordinates are fractions
+-- of the image (0..1) from the top-left. We require a real, sane rectangle (right>left, bottom>top,
+-- and at least 10% of each dimension kept) so a malformed or degenerate crop can't mangle the photo.
+local MIN_CROP_FRACTION = 0.1
+local function applyCrop(s, crop)
+	if type(crop) ~= "table" then return end
+	local top, left = crop.top, crop.left
+	local bottom, right = crop.bottom, crop.right
+	if type(top) ~= "number" or type(left) ~= "number"
+		or type(bottom) ~= "number" or type(right) ~= "number" then
+		return
+	end
+	top = clamp(top, 0, 1); left = clamp(left, 0, 1)
+	bottom = clamp(bottom, 0, 1); right = clamp(right, 0, 1)
+	if (right - left) < MIN_CROP_FRACTION or (bottom - top) < MIN_CROP_FRACTION then
+		return
+	end
+	s.CropTop = top
+	s.CropLeft = left
+	s.CropBottom = bottom
+	s.CropRight = right
+	if type(crop.angle) == "number" then
+		s.CropAngle = clamp(crop.angle, -45, 45)
+	end
+	s.HasCrop = true
+	s.CropConstrainToWarp = false
+end
+
 -- edit: parsed model JSON. brief: metadata (used to decide temp handling).
+-- allowCrop: when true, an edit.crop rectangle (if valid) is applied; otherwise ignored.
 -- Returns a settings table suitable for addDevelopPresetForPlugin.
-function M.toDevelopSettings(edit, brief)
+function M.toDevelopSettings(edit, brief, allowCrop)
 	local s = { ProcessVersion = "11.0" }
 
 	for modelKey, spec in pairs(MAP) do
@@ -184,6 +213,10 @@ function M.toDevelopSettings(edit, brief)
 				s[key] = clamp(v, range[1], range[2])
 			end
 		end
+	end
+
+	if allowCrop then
+		applyCrop(s, edit.crop)
 	end
 
 	return s

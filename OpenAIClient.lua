@@ -303,6 +303,24 @@ WHITE BALANCE (relative, never absolute)
   green fluorescent cast (toward magenta) or a magenta cast (toward green).
 
 ============================================================
+CROPPING (only when explicitly enabled for the run)
+============================================================
+By default you do NOT crop — leave `crop` absent/null and the original framing is kept. When the
+user message says cropping is ENABLED, you MAY return a `crop` object, but ONLY if a crop clearly
+improves the photograph. A good edit usually keeps the original frame; cropping discards pixels and
+the user notices it, so treat it as a deliberate compositional decision, not a default.
+- Coordinates are FRACTIONS of the image, 0..1, measured from the top-left: { top, left, bottom,
+  right }. left<right and top<bottom. The full frame is top=0,left=0,bottom=1,right=1. Example: to
+  trim 5% off the top and 10% off the bottom, top=0.05, bottom=0.90, left=0, right=1.
+- `angle` (degrees, -45..45) straightens a tilted horizon or verticals. Keep it small (a few degrees);
+  use 0 if level. A rotated crop loses edge pixels, so don't over-rotate.
+- Crop FOR a reason you can see: level a horizon, remove dead/distracting edge space, tighten to the
+  subject, fix an off-balance composition, or move the subject toward a stronger third. Respect the
+  subject — never cut through faces/hands or amputate important content.
+- Be conservative: small trims beat aggressive reframes. Don't change the aspect ratio drastically
+  unless the composition truly calls for it. If in doubt, don't crop.
+- State the crop reason in your rationale when you return one.
+
 RESTRAINT & SELF-CHECK (the difference between pro and filter)
 ============================================================
 Pros UNDER-edit. The best grade is the one you don't notice as a grade. Before committing:
@@ -385,6 +403,16 @@ local function buildSchema()
 					},
 				},
 				grayscale = { type = { "boolean", "null" } },
+				-- Crop rectangle as fractions of the image (0..1) + optional straighten angle.
+				-- Only honored when cropping is enabled for the run; otherwise ignored.
+				crop = {
+					type = { "object", "null" },
+					properties = {
+						top = num(0, 1), left = num(0, 1),
+						bottom = num(0, 1), right = num(0, 1),
+						angle = num(-45, 45),
+					},
+				},
 				-- Full access: any Lightroom develop key -> numeric value.
 				advanced = {
 					type = { "object", "null" },
@@ -399,8 +427,9 @@ local function buildSchema()
 end
 
 -- refImage (optional): { b64 = "<base64>", mime = "image/jpeg" } — a reference of the target look.
+-- allowCrop (optional): when true, the model may return a `crop` object.
 -- Returns parsed table (model JSON), errorMessage.
-function M.requestEdit(styleText, brief, base64Jpeg, refImage)
+function M.requestEdit(styleText, brief, base64Jpeg, refImage, allowCrop)
 	local apiKey = LrPasswords.retrieve(KEY_ACCOUNT)
 	if not apiKey or apiKey == "" then
 		return nil, "No OpenAI API key set. Add it in File > Plug-in Manager > AI Style Editor."
@@ -433,9 +462,20 @@ function M.requestEdit(styleText, brief, base64Jpeg, refImage)
 		imageNote = "\n\nNo image is attached; infer a tasteful edit from the style request and metadata."
 	end
 
+	local cropNote
+	if allowCrop then
+		cropNote = "\n\nCROPPING IS ENABLED for this run: you MAY return a `crop` object if a crop "
+			.. "clearly improves the composition (level a horizon, remove dead edge space, tighten to the "
+			.. "subject, strengthen the framing). Keep it conservative and omit `crop` if the original "
+			.. "frame is already good."
+	else
+		cropNote = "\n\nCropping is DISABLED for this run: do NOT return a `crop` object; keep the "
+			.. "original framing."
+	end
+
 	local userText = "Style request: " .. styleText ..
 		"\n\nShot metadata (JSON):\n" .. json.encode(brief) ..
-		imageNote
+		imageNote .. cropNote
 
 	local userContent
 	if hasImage or hasRef then
