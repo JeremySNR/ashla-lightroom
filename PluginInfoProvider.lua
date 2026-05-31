@@ -31,7 +31,7 @@ local function sectionsForTopOfDialog(viewFactory, propertyTable)
 	local f = viewFactory
 	return {
 		{
-			title = "AI Style Editor",
+			title = "Ashla",
 			f:row {
 				f:static_text { title = "OpenAI API key:", width = 120 },
 				f:password_field {

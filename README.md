@@ -1,125 +1,165 @@
-# AI Style Editor (Lightroom Classic)
+<div align="center">
 
-Describe a look in plain language; the plugin reads the selected photo's metadata,
-asks OpenAI for Lightroom develop settings, and applies them as a plugin preset.
+# ✦ A S H L A ✦
 
-**Version:** 0.1.0.16 — **vision re-enabled (test in LR)**
+### *The light side of Lightroom Classic.*
 
-> Edits are generated from your description + the photo's metadata (camera, lens, ISO,
-> keywords, current develop settings, etc.) **and a JPEG preview of the photo**. The
-> preview is captured with `requestJpegThumbnail` on the UI thread (the only reliable
-> path — background thumbnail/`LrExportSession` calls fail; see `THREADING.md`). If the
-> preview can't be produced, the run falls back to text + metadata only.
+**Speak a look. Ashla bends the light to match.**
 
-## Current working state (build 15)
+![Lightroom Classic](https://img.shields.io/badge/Lightroom-Classic-31A8FF?style=for-the-badge)
+![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=for-the-badge)
+![Vision](https://img.shields.io/badge/vision-enabled-3FB950?style=for-the-badge)
+![Version](https://img.shields.io/badge/v0.1.0-build_21-FFD166?style=for-the-badge)
 
-| Stage | Status | Notes |
-|-------|--------|-------|
-| Menu registration (Library + Plug-in Extras) | ✅ Working | Both point to the same script |
-| Style prompt dialog | ✅ Working | Modal on the UI thread |
-| Metadata collection (EXIF, lens, ISO, keywords) | ✅ Working | UI thread; `getRawMetadata` / `getFormattedMetadata` |
-| Current develop settings | ✅ Working | Read in the async task via `getDevelopSettings` |
-| JPEG preview for vision | 🧪 Testing | `requestJpegThumbnail` on UI thread, base64 → request |
-| OpenAI request (text + metadata + image) | ✅ Working | `LrHttp.post`, image attached when available |
-| Map model JSON → develop settings | ✅ Working | `SettingsMapper`, all values clamped |
-| Apply as develop preset | ✅ Working | `addDevelopPresetForPlugin` + catalog write |
-| In-progress guard (no double runs) | ✅ Working | `pipelineRunning` flag |
-| `LrExportSession` thumbnail/histogram | ❌ Removed | "must not call on main UI task" |
-| Histogram analysis | ❌ Removed | Same `LrExportSession` limitation |
-| Progress bar (`LrProgressScope`) | ❌ Removed | Broke `LrHttp.post` (Lua 5.1 yield boundary) |
+</div>
 
-## How it runs (pipeline)
+---
+
+> In the old tongue, **Ashla** is *the light* — the bright half of the Force.
+> This is where your photographs come to find theirs.
+
+Ashla is an AI color-grading plugin for **Adobe Lightroom Classic**. Describe a mood
+in plain language — or hand it a reference frame, or simply say *surprise me* — and it
+**looks at your photo**, reads its metadata, and renders a full set of develop settings
+as a one-click preset. No sliders to wrestle. No presets to hoard. Just light, tuned to
+your words.
 
 ```
-UI thread (callWithContext)
-  ├─ promptForStyle            → style description
-  ├─ MetadataCollector.collect → EXIF / lens / keywords
-  └─ ThumbnailExporter.requestBase64Jpeg → JPEG preview (UI-thread only)
-       └─ callback → startPipeline(... , base64Jpeg)   [6s timeout → text-only]
-postAsyncTaskWithContext  (canYield = true)
-  └─ LrTasks.pcall            → yield-safe error handling
-       ├─ enrichDevelopSettings → current sliders
-       ├─ OpenAIClient.requestEdit (text + metadata JSON + image)
-       ├─ SettingsMapper.toDevelopSettings
-       └─ PresetApplier.apply  → preset applied to photo
+                 you ──▶  "Kodak Gold 200, warm skin, lifted matte blacks"
+                              │
+                       ✦ ASHLA reads the frame ✦
+                              │
+   exposure · contrast · tone curve · HSL · color grade · grain · (optional crop)
+                              │
+                 photo ◀──  a finished, professional edit
 ```
 
-Full threading rationale: **`THREADING.md`**.
+---
+
+## Three ways to ask for light
+
+| Mode | You give it | Ashla does |
+|------|-------------|------------|
+| **Describe** | A look in words — film stock, mood, palette, subject | Interprets your intent and grades to it |
+| **Reference** | An example image of a look you love | Diagnoses *that* grade and reproduces it on your photo — matching the **style**, not the subject |
+| **I'm Feeling Lucky** | Nothing at all | Studies the photo, diagnoses what it needs, and makes the best edit it can — unprompted |
+
+> Reference matching and Lucky mode both lean on the same thing: Ashla **sees the pixels**.
+> A JPEG preview of your photo (and your reference, if you give one) rides along with every request.
+
+---
+
+## The craft
+
+Ashla isn't a one-click filter dressed up in robes. The model carries a working knowledge of
+how a top retoucher actually thinks:
+
+- **Foundation first.** White balance, exposure, a full tonal range, highlight and shadow
+  recovery, believable skin — *before* any creative flavor goes on top.
+- **Sliders as a system.** It knows whites/blacks set the range while highlights/shadows recover
+  within it; that clarity, texture, and dehaze fight at different radii; that vibrance protects skin
+  where saturation won't; that the tone curve and HSL can crossover color the way film does.
+- **Color grading with restraint.** It understands split-toning, complementary palettes, and how
+  a grade *adds* color where HSL only bends what's there — and it uses that knowledge sparingly.
+
+> **The whole philosophy in one line:** *pros under-edit.* The best grade is the one you don't
+> notice as a grade. Ashla aims for "a senior editor would sign off on this," not "obvious one-click look."
+
+---
+
+## Cropping (optional, off by default)
+
+Tick one box and Ashla may also **recompose** — level a tilted horizon, trim dead edge space,
+tighten to the subject, nudge the frame toward a stronger third. It only crops when it genuinely
+improves the shot, never cuts through faces or important content, and leaves your framing untouched
+the rest of the time. Coordinates are validated before they ever reach the catalog, so a bad crop
+can't mangle your photo.
+
+---
+
+## How it runs
+
+```
+UI thread
+  ├─ Describe / Reference / Lucky   → your request
+  ├─ read EXIF · lens · ISO · keywords · current develop settings
+  └─ capture a JPEG preview          (UI-thread only — the one reliable path)
+        │
+async task
+  └─ ✦ send words + metadata + preview (+ reference) to the vision model
+        ├─ model returns develop settings as structured JSON
+        ├─ map → clamp every value to a safe range
+        └─ apply as a plugin develop preset  →  done
+```
+
+Full threading rationale lives in [`THREADING.md`](THREADING.md).
+
+---
 
 ## Setup
 
-1. **File → Plug-in Manager → Add** and select the `ai-style-editor.lrplugin` folder.
-2. Select **AI Style Editor** → enter your **OpenAI API key** (stored in the OS keychain).
-3. Set **Model** (default `gpt-5.5`) and **Reasoning effort** if needed.
-4. **Reload** after code updates; **restart Lightroom** once if behavior seems cached.
+1. **File → Plug-in Manager → Add**, select the `ai-style-editor.lrplugin` folder.
+2. Open **Ashla** in the manager and enter your **OpenAI API key** (stored in the OS keychain — never on disk).
+3. Set your **Model** (default `gpt-5.5`) and **Reasoning effort** if you like.
+4. **Reload** after code updates; restart Lightroom once if anything seems cached.
 
-## How to run
+## Run it
 
 1. In **Library**, select **one** photo.
-2. Run **AI Style Edit…**:
-   - **Library** → right-click photo → **AI Style Edit…**, or
-   - **File → Plug-in Extras → AI Style Edit…**
-3. Either enter a style description → **Generate Edit**, **or** click **I'm Feeling Lucky** to let
-   the AI diagnose the photo and apply the best edit it can with no style brief.
-4. The model returns settings; the preset is applied and a summary dialog shows its rationale.
+2. Launch **Ashla**:
+   - right-click the photo → **Ashla…**, or
+   - **File → Plug-in Extras → Ashla…**
+3. Type a look and hit **Generate Edit** — *or* attach a reference — *or* click **I'm Feeling Lucky**.
+4. Ashla returns settings, applies the preset, and shows you its reasoning.
+
+---
+
+## Getting the best out of it
+
+- **Be specific.** Film stock, mood, subject, light: *"Portra 400, soft warm skin, creamy roll-off"*
+  beats *"make it nice."*
+- **Feed it context.** Richer catalog metadata — keywords, captions, lens, ISO — sharpens the read.
+- **Show, don't only tell.** A reference frame is often worth a paragraph of description.
+- **Peek behind the curtain.** Every run is logged so you can see exactly what the model returned.
 
 ## Logs (on your Desktop)
 
 | File | Contents |
 |------|----------|
-| `ai-style-editor.log` | Timestamped trace log |
-| `ai-style-editor-last.json` | Last run: prompt, metadata brief, model JSON, mapped settings |
-
-A successful run logs exactly this sequence:
-
-```
-collecting metadata on UI thread; canYield=false
-metadata collected
-=== NEW RUN === Style request: <your text>
-pipeline task; canYield=true
-openai: requesting edit
-Posting to OpenAI, model=gpt-5.5
-openai: ok
-apply: starting
-Applied AI Style Edit preset
-apply: ok
-```
-
-## Getting the best edits
-
-- Be specific: film stock, mood, subject (portrait, landscape).
-- Examples: *"Kodak Gold 200, warm skin, lifted matte blacks"* or *"moody cinematic, teal shadows"*.
-- The model styles from your words + the photo's metadata (it does not see the pixels),
-  so richer catalog metadata (keywords, captions, lens, ISO) improves results.
-- Review `ai-style-editor-last.json` to see exactly what the model returned.
+| `ai-style-editor.log` | Timestamped trace of the run |
+| `ai-style-editor-last.json` | Last run: your prompt, the metadata brief, the model's JSON, the mapped settings |
 
 ## Troubleshooting
 
-| Problem | What to try |
-|---------|-------------|
-| No API key | Plug-in Manager → AI Style Editor → enter key |
-| OpenAI model error | Change model to one your account supports (e.g. `gpt-4o`) |
-| `Network error contacting OpenAI` | Check connection / key / model name |
+| Problem | Try |
+|---------|-----|
+| No API key | Plug-in Manager → Ashla → enter your key |
+| Model error | Switch to a model your account supports (e.g. `gpt-4o`) |
+| `Network error contacting OpenAI` | Check connection, key, and model name |
 | Menu missing | Plug-in Manager → Add/Reload; be in Library with a photo selected |
 | Edit already in progress | Wait for the current run to finish |
-| Plugin not in list | Add the `ai-style-editor.lrplugin` folder in Plug-in Manager |
 
-## Files
+---
+
+## Under the hood
 
 | File | Role |
 |------|------|
-| `Info.lua` | Plugin manifest, menu registration, version |
+| `Info.lua` | Manifest, menu registration, version |
 | `AIStyleEditMenuItem.lua` | Entry point + pipeline orchestration |
-| `MetadataCollector.lua` | EXIF / develop-settings → brief |
-| `OpenAIClient.lua` | Builds request, calls OpenAI, parses JSON |
-| `SettingsMapper.lua` | Model JSON → clamped develop settings |
-| `PresetApplier.lua` | Creates + applies the develop preset |
+| `MetadataCollector.lua` | EXIF / develop settings → brief |
+| `OpenAIClient.lua` | Builds the request, calls OpenAI, parses the JSON — home of the editing brain |
+| `SettingsMapper.lua` | Model JSON → clamped develop settings (incl. crop) |
+| `PresetApplier.lua` | Creates and applies the develop preset |
 | `Logger.lua` / `LogPaths.lua` | Desktop trace log |
-| `DebugLog.lua` | Writes last-run JSON |
+| `DebugLog.lua` | Last-run JSON |
 | `PluginInfoProvider.lua` | Plug-in Manager settings panel |
 | `json.lua` / `Base64.lua` | Utilities |
-| `HistogramAnalyzer.lua` / `ThumbnailExporter.lua` | **Unused** (LrExportSession; kept for reference) |
 
-## Developer notes
+<div align="center">
 
-Threading rules and the full debugging history: **`THREADING.md`**.
+---
+
+*May the light be with you.*
+
+</div>

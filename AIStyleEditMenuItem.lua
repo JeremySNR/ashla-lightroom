@@ -1,5 +1,5 @@
 --[[
-AI Style Edit — menu entry point.
+Ashla — menu entry point.
 
 LrExportSession ("must not call on main UI task") was the only consistently failing
 piece across every threading variant. It is removed entirely: no thumbnail export,
@@ -140,7 +140,7 @@ local function promptForStyle(context)
 	}
 
 	local result = LrDialogs.presentModalDialog {
-		title = "AI Style Edit",
+		title = "Ashla",
 		contents = contents,
 		actionVerb = "Generate Edit",
 		otherVerb = "I'm Feeling Lucky",
@@ -208,7 +208,7 @@ local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allow
 			logger:trace("apply: ok")
 
 			LrDialogs.message(
-				"AI Style Edit applied",
+				"Ashla — edit applied",
 				edit.rationale or "Edit applied.",
 				"info"
 			)
@@ -218,7 +218,7 @@ local function startPipeline(photo, styleText, brief, base64Jpeg, refPath, allow
 
 		if not ok then
 			logger:trace("pipeline error: " .. tostring(err))
-			LrDialogs.message("AI Style Edit failed", tostring(err), "critical")
+			LrDialogs.message("Ashla — edit failed", tostring(err), "critical")
 		end
 	end)
 end
@@ -226,7 +226,7 @@ end
 LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 	if pipelineRunning then
 		LrDialogs.message(
-			"AI Style Edit",
+			"Ashla",
 			"An edit is already in progress. Wait for it to finish.",
 			"warning"
 		)
@@ -236,7 +236,7 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 	local catalog = LrApplication.activeCatalog()
 	local photo = catalog:getTargetPhoto()
 	if not photo then
-		LrDialogs.message("AI Style Edit", "Select a single photo first.", "warning")
+		LrDialogs.message("Ashla", "Select a single photo first.", "warning")
 		return
 	end
 

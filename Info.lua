@@ -1,8 +1,12 @@
 --[[
-AI Style Editor — Lightroom Classic plugin manifest.
+Ashla — the light side of Lightroom Classic.
 
-Describe a look in plain language; the plugin reads the photo + its EXIF, asks a
+Describe a look in plain language; the plugin looks at the photo + its EXIF, asks a
 vision model for slider values, and applies them as a develop preset.
+
+Note: LrToolkitIdentifier stays "ai.neuralvoice.aistyleeditor" deliberately — the saved
+OpenAI API key is stored in the keychain under this identifier, so renaming it would
+orphan the key. The display name and menus are "Ashla".
 ]]
 
 return {
@@ -10,7 +14,7 @@ return {
 	LrSdkMinimumVersion = 6.0,
 
 	LrToolkitIdentifier = "ai.neuralvoice.aistyleeditor",
-	LrPluginName = "AI Style Editor",
+	LrPluginName = "Ashla",
 
 	LrPluginInfoUrl = "https://neural-voice.ai",
 
@@ -18,7 +22,7 @@ return {
 
 	LrExportMenuItems = {
 		{
-			title = "AI Style Edit\226\128\166", -- "AI Style Edit…"
+			title = "Ashla\226\128\166", -- "Ashla…"
 			file = "AIStyleEditMenuItem.lua",
 			enabledWhen = "photosSelected",
 		},
@@ -26,11 +30,11 @@ return {
 
 	LrLibraryMenuItems = {
 		{
-			title = "AI Style Edit\226\128\166",
+			title = "Ashla\226\128\166",
 			file = "AIStyleEditMenuItem.lua",
 			enabledWhen = "photosSelected",
 		},
 	},
 
-	VERSION = { major = 0, minor = 1, revision = 0, build = 21 },
+	VERSION = { major = 0, minor = 1, revision = 0, build = 22 },
 }

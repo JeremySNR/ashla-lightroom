@@ -7,7 +7,7 @@ local M = {}
 -- Applies settings to photo. Must be called from a task; performs the catalog write itself.
 -- Returns true, or false + errorMessage.
 function M.apply(photo, settings, presetName)
-	presetName = presetName or "AI Style Edit"
+	presetName = presetName or "Ashla"
 
 	local ok, preset = pcall(function()
 		return LrApplication.addDevelopPresetForPlugin(_PLUGIN, presetName, settings)
@@ -17,7 +17,7 @@ function M.apply(photo, settings, presetName)
 	end
 
 	local catalog = LrApplication.activeCatalog()
-	local ok, err = catalog:withWriteAccessDo("AI Style Edit", function()
+	local ok, err = catalog:withWriteAccessDo("Ashla", function()
 		photo:applyDevelopPreset(preset, _PLUGIN)
 	end, { timeout = 10 })
 
@@ -25,7 +25,7 @@ function M.apply(photo, settings, presetName)
 		return false, tostring(err or "write access denied")
 	end
 
-	logger:trace("Applied AI Style Edit preset")
+	logger:trace("Applied Ashla preset")
 	return true
 end
 

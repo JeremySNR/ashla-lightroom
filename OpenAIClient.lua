@@ -432,7 +432,7 @@ end
 function M.requestEdit(styleText, brief, base64Jpeg, refImage, allowCrop)
 	local apiKey = LrPasswords.retrieve(KEY_ACCOUNT)
 	if not apiKey or apiKey == "" then
-		return nil, "No OpenAI API key set. Add it in File > Plug-in Manager > AI Style Editor."
+		return nil, "No OpenAI API key set. Add it in File > Plug-in Manager > Ashla."
 	end
 	local prefs = LrPrefs.prefsForPlugin()
 	local model = prefs.model
