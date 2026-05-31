@@ -18,6 +18,7 @@ local LrView = import "LrView"
 local LrTasks = import "LrTasks"
 
 local MetadataCollector = require "MetadataCollector"
+local ThumbnailExporter = require "ThumbnailExporter"
 local OpenAIClient = require "OpenAIClient"
 local SettingsMapper = require "SettingsMapper"
 local PresetApplier = require "PresetApplier"
@@ -62,10 +63,11 @@ local function promptForStyle(context)
 	return nil
 end
 
-local function startPipeline(photo, styleText, brief)
+local function startPipeline(photo, styleText, brief, base64Jpeg)
 	pipelineRunning = true
 	logger:trace("=== NEW RUN === Style request: " .. styleText)
-	logger:trace("mode: build 15 | text+metadata (no image export) | steps: metadata -> openai -> apply")
+	logger:trace("mode: build 16 | text+metadata+image | hasImage="
+		.. tostring(base64Jpeg ~= nil) .. " | steps: metadata -> openai -> apply")
 
 	LrFunctionContext.postAsyncTaskWithContext("aiStyleEditPipeline", function(context)
 		logger:trace("pipeline task; canYield=" .. tostring(LrTasks.canYield()))
@@ -74,7 +76,7 @@ local function startPipeline(photo, styleText, brief)
 			MetadataCollector.enrichDevelopSettings(photo, brief)
 
 			logger:trace("openai: requesting edit")
-			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, nil)
+			local edit, aiErr = OpenAIClient.requestEdit(styleText, brief, base64Jpeg)
 			if not edit then
 				error(aiErr or "OpenAI request failed")
 			end
@@ -136,5 +138,43 @@ LrFunctionContext.callWithContext("aiStyleEditPrompt", function(context)
 	local brief = MetadataCollector.collect(photo)
 	logger:trace("metadata collected")
 
-	startPipeline(photo, styleText, brief)
+	-- Capture a JPEG preview for the vision model. requestJpegThumbnail is only reliable on the
+	-- UI thread (background requests return "error loading thumb" — see THREADING.md), so we do it
+	-- here and launch the pipeline from its callback. Two gotchas handled:
+	--   1. The callback can fire more than once (a cached/nil thumb first, then the full render),
+	--      so we ONLY launch on a successful payload and let a one-shot guard pick the first good one.
+	--   2. If no usable thumbnail ever arrives, a timeout fallback launches text-only so we never hang.
+	local started = false
+	local function launch(b64)
+		if started then return end
+		started = true
+		startPipeline(photo, styleText, brief, b64)
+	end
+
+	logger:trace("requesting JPEG thumbnail on UI thread; canYield=" .. tostring(LrTasks.canYield()))
+	local reqOk = pcall(function()
+		ThumbnailExporter.requestBase64Jpeg(photo, 1024, function(b64, err)
+			if b64 and not err then
+				logger:trace("thumbnail ready (" .. tostring(#b64) .. " b64 chars)")
+				launch(b64)
+			else
+				logger:trace("thumbnail attempt empty/error: " .. tostring(err))
+			end
+		end)
+	end)
+
+	-- Fallback so a missing/failed thumbnail can't stall the run. If a real image arrives first,
+	-- the guard makes this a no-op; otherwise we proceed text-only after a short wait.
+	LrTasks.startAsyncTask(function()
+		if not reqOk then
+			logger:trace("requestJpegThumbnail threw; proceeding text-only")
+			launch(nil)
+			return
+		end
+		LrTasks.sleep(6)
+		if not started then
+			logger:trace("no thumbnail within timeout; proceeding text-only")
+			launch(nil)
+		end
+	end)
 end)

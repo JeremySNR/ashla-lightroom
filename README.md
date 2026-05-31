@@ -3,12 +3,13 @@
 Describe a look in plain language; the plugin reads the selected photo's metadata,
 asks OpenAI for Lightroom develop settings, and applies them as a plugin preset.
 
-**Version:** 0.1.0.15 — **working / stable**
+**Version:** 0.1.0.16 — **vision re-enabled (test in LR)**
 
 > Edits are generated from your description + the photo's metadata (camera, lens, ISO,
-> keywords, current develop settings, etc.). The image pixels are **not** sent —
-> Lightroom's image-export API (`LrExportSession`) is unreliable from plugin menus, so
-> it was removed for stability.
+> keywords, current develop settings, etc.) **and a JPEG preview of the photo**. The
+> preview is captured with `requestJpegThumbnail` on the UI thread (the only reliable
+> path — background thumbnail/`LrExportSession` calls fail; see `THREADING.md`). If the
+> preview can't be produced, the run falls back to text + metadata only.
 
 ## Current working state (build 15)
 
@@ -18,11 +19,12 @@ asks OpenAI for Lightroom develop settings, and applies them as a plugin preset.
 | Style prompt dialog | ✅ Working | Modal on the UI thread |
 | Metadata collection (EXIF, lens, ISO, keywords) | ✅ Working | UI thread; `getRawMetadata` / `getFormattedMetadata` |
 | Current develop settings | ✅ Working | Read in the async task via `getDevelopSettings` |
-| OpenAI request (text + metadata) | ✅ Working | `LrHttp.post`, no image attached |
+| JPEG preview for vision | 🧪 Testing | `requestJpegThumbnail` on UI thread, base64 → request |
+| OpenAI request (text + metadata + image) | ✅ Working | `LrHttp.post`, image attached when available |
 | Map model JSON → develop settings | ✅ Working | `SettingsMapper`, all values clamped |
 | Apply as develop preset | ✅ Working | `addDevelopPresetForPlugin` + catalog write |
 | In-progress guard (no double runs) | ✅ Working | `pipelineRunning` flag |
-| Thumbnail/JPEG export | ❌ Removed | `LrExportSession` → "must not call on main UI task" |
+| `LrExportSession` thumbnail/histogram | ❌ Removed | "must not call on main UI task" |
 | Histogram analysis | ❌ Removed | Same `LrExportSession` limitation |
 | Progress bar (`LrProgressScope`) | ❌ Removed | Broke `LrHttp.post` (Lua 5.1 yield boundary) |
 
@@ -31,11 +33,13 @@ asks OpenAI for Lightroom develop settings, and applies them as a plugin preset.
 ```
 UI thread (callWithContext)
   ├─ promptForStyle            → style description
-  └─ MetadataCollector.collect → EXIF / lens / keywords
+  ├─ MetadataCollector.collect → EXIF / lens / keywords
+  └─ ThumbnailExporter.requestBase64Jpeg → JPEG preview (UI-thread only)
+       └─ callback → startPipeline(... , base64Jpeg)   [6s timeout → text-only]
 postAsyncTaskWithContext  (canYield = true)
   └─ LrTasks.pcall            → yield-safe error handling
        ├─ enrichDevelopSettings → current sliders
-       ├─ OpenAIClient.requestEdit (text + metadata JSON)
+       ├─ OpenAIClient.requestEdit (text + metadata JSON + image)
        ├─ SettingsMapper.toDevelopSettings
        └─ PresetApplier.apply  → preset applied to photo
 ```
